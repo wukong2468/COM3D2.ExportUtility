@@ -125,34 +125,78 @@ func (e *Extractor) run() bool {
 // ==================== 核心处理 ====================
 
 // searchArcFiles 递归搜索工作目录下的所有 .arc 文件。
+// 普通遍历（filepath.WalkDir）不会进入目录软链接，这里改为手动递归：
+//   - 跟随指向目录的软链接（工作目录内通过软链接可见的 .arc 也会被找到）；
+//   - 拼接找到文件的路径时保留“软链接所在路径”，而非解析后的真实路径，
+//     这样后续 filepath.Rel 生成的包内相对路径（导出目录的子目录）也是软链接路径；
+//   - 通过“当前递归链上的真实目录”集合检测软链接环路，避免无限循环；
+//     两个不同的软链接指向同一真实目录时仍会分别遍历。
 func (e *Extractor) searchArcFiles() []string {
 	var result []string
 	found := 0
-	err := filepath.WalkDir(e.workingDir, func(p string, d fs.DirEntry, err error) error {
+	var walkErr error
+
+	// chain 记录当前递归链上已访问过的“真实目录”（解析软链接后归一化），
+	// 仅用于检测环路；兄弟软链接指向同一真实目录互不影响。
+	chain := make(map[string]struct{})
+
+	var walk func(dir string)
+	walk = func(dir string) {
+		real, err := filepath.EvalSymlinks(dir)
 		if err != nil {
-			return nil // 跳过不可访问的目录/文件，整体结果仍会走 err 汇总
+			real = dir
 		}
-		if d.IsDir() {
-			return nil
+		real = strings.ToLower(filepath.Clean(real)) // 统一大小写，兼容 Windows 路径差异
+		if _, ok := chain[real]; ok {
+			return // 软链接环路：停止下钻
 		}
-		if strings.EqualFold(filepath.Ext(p), ".arc") {
-			result = append(result, p)
-			found++
-			if found%10 == 0 && e.useCursor {
-				e.safeStatusLine(fmt.Sprintf("→ 正在搜索 .arc 文件... 已找到 %d 个", found))
+		chain[real] = struct{}{}
+		defer delete(chain, real)
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if walkErr == nil {
+				walkErr = err
+			}
+			return
+		}
+		for _, d := range entries {
+			p := filepath.Join(dir, d.Name())
+			typ := d.Type()
+
+			// 目录（含指向目录的软链接，通过 os.Stat 跟随判定）：继续递归
+			isDir := d.IsDir()
+			if typ&fs.ModeSymlink != 0 {
+				info, err := os.Stat(p) // 跟随软链接
+				if err != nil {
+					continue // 悬空链接，跳过
+				}
+				isDir = info.IsDir()
+			}
+			if isDir {
+				walk(p)
+				continue
+			}
+
+			if strings.EqualFold(filepath.Ext(p), ".arc") {
+				result = append(result, p)
+				found++
+				if found%10 == 0 && e.useCursor {
+					e.safeStatusLine(fmt.Sprintf("→ 正在搜索 .arc 文件... 已找到 %d 个", found))
+				}
 			}
 		}
-		return nil
-	})
-	if err != nil {
-		e.errorLog(fmt.Sprintf("搜索 .arc 文件时出错：%v", err))
+	}
+
+	walk(e.workingDir)
+	if walkErr != nil {
+		e.errorLog(fmt.Sprintf("搜索 .arc 文件时出错：%v", walkErr))
 	}
 	e.safeStatusLine(fmt.Sprintf("✓ 扫描完成：共找到 %d 个 .arc 文件", found))
 	fmt.Println()
 	return result
 }
 
-// processArc 读取并提取单个 .arc 文件中的内容。
 func (e *Extractor) processArc(arcPath string) {
 	arcRel, err := filepath.Rel(e.workingDir, arcPath)
 	if err != nil {
