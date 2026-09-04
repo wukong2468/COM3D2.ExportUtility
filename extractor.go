@@ -14,12 +14,15 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/MeidoPromotionAssociation/MeidoSerialization/v2/application"
 	"github.com/MeidoPromotionAssociation/MeidoSerialization/v2/serialization/COM3D2"
 	"github.com/MeidoPromotionAssociation/MeidoSerialization/v2/serialization/COM3D2/arc"
 	COM3D2Service "github.com/MeidoPromotionAssociation/MeidoSerialization/v2/service/COM3D2"
 	KCESService "github.com/MeidoPromotionAssociation/MeidoSerialization/v2/service/KCES"
+	"golang.org/x/text/encoding/japanese"
+	"golang.org/x/text/transform"
 )
 
 type Extractor struct {
@@ -444,7 +447,34 @@ func (e *Extractor) extractEntryTo(entry *arc.File, targetPath string) bool {
 		e.errorLog(fmt.Sprintf("提取文件失败：%s\n原因：%v", targetPath, err))
 		return false
 	}
+	// .ks 为日文 Shift JIS 编码，提取后转成 UTF-8
+	if strings.EqualFold(filepath.Ext(targetPath), ".ks") {
+		e.convertKSToUTF8(targetPath)
+	}
 	return true
+}
+
+// convertKSToUTF8 把 Shift JIS 编码的 .ks 文件转换为 UTF-8。
+// 若内容已是合法 UTF-8（含纯 ASCII 文本），则原样保留，避免破坏本就
+// 是 UTF-8 的脚本；转换失败仅记录警告，不影响提取结果。
+func (e *Extractor) convertKSToUTF8(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		e.warnLog(fmt.Sprintf("读取 .ks 文件失败，跳过编码转换：%s\n%v", path, err))
+		return
+	}
+	if utf8.Valid(data) {
+		return // 已是合法 UTF-8（含纯 ASCII），无需转换
+	}
+	dec := japanese.ShiftJIS.NewDecoder()
+	out, _, err := transform.Bytes(dec, data)
+	if err != nil {
+		e.warnLog(fmt.Sprintf("Shift JIS 转 UTF-8 失败：%s\n%v", path, err))
+		return
+	}
+	if err := os.WriteFile(path, out, 0644); err != nil {
+		e.warnLog(fmt.Sprintf("写入 UTF-8 .ks 文件失败：%s\n%v", path, err))
+	}
 }
 
 // writeTmp 把 arc 条目解压写到目标目录下的 .arc.tmp 中间文件。

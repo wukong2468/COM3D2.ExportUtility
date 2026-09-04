@@ -11,10 +11,10 @@
   | 选项 | 行为 |
   | --- | --- |
   | 任意类型 | 提取包内全部文件；其中的音频、图像会被自动识别并转换 |
-  | .ks | 按后缀匹配，原样提取 |
   | .nei | 按后缀匹配，原样提取并自动转出同名 `.csv` |
   | 音频（.ogg） | 识别原始音频（`.ogg/.wav/.fsb/.fsb5`）与 KCES AudioClip（内容识别）；AudioClip 提取其内嵌音频载荷，扩展名按载荷真实签名命名（`.ogg/.wav/.fsb/.audio`，不转码） |
   | 图像（.tex → .png） | 识别 COM3D2 `.tex` 与 KCES Texture2D/Sprite（内容识别），转换为 `.png`（只保留 `.png`）；`.png/.jpg/.jpeg/.bmp/.gif/.webp` 等已是图像的按原样保留 |
+  | .ks | 按后缀匹配，原样提取；内容是日文 Shift JIS 编码时自动转换为 UTF-8（已是合法 UTF-8 或纯 ASCII 则原样保留） |
 
 - 内容识别而非纯后缀匹配：
   - `.ogg/.tex/.png` 等后缀能直接确定格式的文件不做多余检测；
