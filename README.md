@@ -2,8 +2,6 @@
 
 交互式控制台工具：递归扫描工作目录下所有 `.arc` 资源包，按选择的类型过滤并提取文件，音频、图像在提取时自动识别与转换。
 
-本项目为 C# 版 ExportUtility 的 Go 重写版，不再调用 `MeidoSerialization.exe` 子进程，也不再依赖 CM3D2.ToolKit，而是把 [MeidoSerialization](https://github.com/MeidoPromotionAssociation/MeidoSerialization)（Go 模块，v2.3.0）作为库直接使用其源码能力。
-
 ## 功能特性
 
 - 交互式界面：方向键移动、空格多选、回车确认，支持中文显示与输入（UTF-8 控制台代码页）。
