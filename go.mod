@@ -17,6 +17,3 @@ require (
 	github.com/ulikunitz/xz v0.5.16 // indirect
 	golang.org/x/text v0.41.0 // indirect
 )
-
-// 直接引用 GitHub 上发布的 MeidoSerialization 版本；
-// external/MeidoSerialization 仅作本地源码参考，不参与编译。
